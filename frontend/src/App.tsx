@@ -1,0 +1,234 @@
+import React, { useState, useCallback, useRef } from "react";
+import { StyleSelector } from "./components/StyleSelector";
+import { ProgressCard } from "./components/ProgressCard";
+import {
+  createGenerateJob,
+  getJobStatus,
+  getDownloadUrl,
+  type JobStatus,
+} from "./api/client";
+
+type VideoStyle = "tech" | "minimal" | "cute";
+type AppState = "idle" | "loading";
+
+// 主应用组件
+export default function App() {
+  const [topic, setTopic] = useState("");
+  const [style, setStyle] = useState<VideoStyle>("tech");
+  const [sceneCount, setSceneCount] = useState(5);
+  const [appState, setAppState] = useState<AppState>("idle");
+  const [jobId, setJobId] = useState<string | null>(null);
+  const [jobStatus, setJobStatus] = useState<JobStatus | null>(null);
+  const pollTimerRef = useRef<ReturnType<typeof setInterval> | null>(null);
+
+  // 停止轮询
+  const stopPolling = useCallback(() => {
+    if (pollTimerRef.current) {
+      clearInterval(pollTimerRef.current);
+      pollTimerRef.current = null;
+    }
+  }, []);
+
+  // 开始轮询任务状态
+  const startPolling = useCallback((id: string) => {
+    const poll = async () => {
+      try {
+        const status = await getJobStatus(id);
+        setJobStatus(status);
+
+        // 完成或出错时停止轮询
+        if (status.status === "done" || status.status === "error") {
+          stopPolling();
+          setAppState("idle");
+        }
+      } catch {
+        console.error("轮询状态失败");
+      }
+    };
+
+    poll(); // 立即执行一次
+    pollTimerRef.current = setInterval(poll, 2000); // 每2秒轮询
+  }, [stopPolling]);
+
+  // 点击生成按钮
+  const handleGenerate = async () => {
+    if (!topic.trim()) {
+      alert("请输入视频主题");
+      return;
+    }
+
+    stopPolling();
+    setJobStatus(null);
+    setJobId(null);
+    setAppState("loading");
+
+    try {
+      const { jobId: newJobId } = await createGenerateJob({
+        topic: topic.trim(),
+        style,
+        scenes: sceneCount,
+      });
+
+      setJobId(newJobId);
+      startPolling(newJobId);
+    } catch (err) {
+      setAppState("idle");
+      alert((err as Error).message || "创建任务失败，请检查后端服务是否运行");
+    }
+  };
+
+  // 下载视频
+  const handleDownload = () => {
+    if (jobId) {
+      const url = getDownloadUrl(jobId);
+      const a = document.createElement("a");
+      a.href = url;
+      a.download = `${topic}-${style}.mp4`;
+      a.click();
+    }
+  };
+
+  const isGenerating = appState === "loading" && jobStatus &&
+    (jobStatus.status === "generating" || jobStatus.status === "rendering");
+
+  return (
+    <div className="min-h-screen tech-bg relative">
+      {/* 装饰性网格背景 */}
+      <div
+        className="absolute inset-0 pointer-events-none opacity-5"
+        style={{
+          backgroundImage: `linear-gradient(rgba(0,212,255,0.3) 1px, transparent 1px),
+                           linear-gradient(90deg, rgba(0,212,255,0.3) 1px, transparent 1px)`,
+          backgroundSize: "60px 60px",
+        }}
+      />
+
+      <div className="relative z-10 max-w-2xl mx-auto px-4 py-12">
+        {/* 页头 */}
+        <header className="text-center mb-12">
+          <div className="inline-flex items-center gap-2 px-4 py-2 bg-cyan-500/10 border border-cyan-500/30 rounded-full text-cyan-400 text-sm mb-6">
+            <span className="w-2 h-2 rounded-full bg-cyan-400 animate-pulse" />
+            AI 驱动 · 自动生成
+          </div>
+          <h1 className="text-5xl font-black text-white mb-4 tracking-tight">
+            AI 视频生成器
+          </h1>
+          <p className="text-white/50 text-lg">
+            输入主题，一键生成抖音/小红书竖屏短视频
+          </p>
+        </header>
+
+        {/* 主表单卡片 */}
+        <div className="glass-card rounded-2xl p-6 space-y-6">
+          {/* 主题输入 */}
+          <div className="space-y-2">
+            <label className="block text-sm font-semibold text-white/70">
+              视频主题
+            </label>
+            <input
+              type="text"
+              value={topic}
+              onChange={(e) => setTopic(e.target.value)}
+              onKeyDown={(e) => e.key === "Enter" && handleGenerate()}
+              placeholder="例如：5个提升效率的AI工具、减肥的3个秘诀..."
+              className="w-full px-4 py-3 bg-white/5 border border-white/10 rounded-xl text-white
+                         placeholder:text-white/30 focus:outline-none focus:border-cyan-500/50
+                         focus:bg-white/8 transition-all duration-200 text-sm"
+              disabled={!!isGenerating}
+            />
+          </div>
+
+          {/* 视频风格选择 */}
+          <div className="space-y-2">
+            <label className="block text-sm font-semibold text-white/70">
+              视频风格
+            </label>
+            <StyleSelector value={style} onChange={setStyle} />
+          </div>
+
+          {/* 场景数量 */}
+          <div className="space-y-2">
+            <label className="block text-sm font-semibold text-white/70">
+              场景数量
+              <span className="ml-2 text-cyan-400 font-bold">{sceneCount}</span>
+            </label>
+            <input
+              type="range"
+              min={3}
+              max={8}
+              value={sceneCount}
+              onChange={(e) => setSceneCount(Number(e.target.value))}
+              className="w-full accent-cyan-500"
+              disabled={!!isGenerating}
+            />
+            <div className="flex justify-between text-xs text-white/30">
+              <span>3个场景（约18秒）</span>
+              <span>8个场景（约50秒）</span>
+            </div>
+          </div>
+
+          {/* 生成按钮 */}
+          <button
+            onClick={handleGenerate}
+            disabled={!!isGenerating || !topic.trim()}
+            className={`
+              w-full py-4 rounded-xl font-bold text-lg transition-all duration-200
+              flex items-center justify-center gap-3
+              ${isGenerating || !topic.trim()
+                ? "bg-white/10 text-white/30 cursor-not-allowed"
+                : "bg-gradient-to-r from-cyan-500 to-blue-600 text-white hover:from-cyan-400 hover:to-blue-500 active:scale-[0.98] shadow-lg shadow-cyan-500/20"
+              }
+            `}
+          >
+            {isGenerating ? (
+              <>
+                <svg className="w-5 h-5 animate-spin" fill="none" viewBox="0 0 24 24">
+                  <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
+                  <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z" />
+                </svg>
+                生成中...
+              </>
+            ) : (
+              <>
+                <span>🎬</span>
+                开始生成视频
+              </>
+            )}
+          </button>
+        </div>
+
+        {/* 进度/结果展示 */}
+        {jobStatus && (
+          <div className="mt-6">
+            <ProgressCard jobStatus={jobStatus} onDownload={handleDownload} />
+          </div>
+        )}
+
+        {/* 使用说明 */}
+        {!jobStatus && (
+          <div className="mt-8 grid grid-cols-3 gap-4 text-center">
+            {[
+              { icon: "📝", label: "AI 生成脚本", desc: "Gemini 自动创作" },
+              { icon: "🖼", label: "智能配图", desc: "Unsplash 精选图片" },
+              { icon: "🎬", label: "自动渲染", desc: "1080×1920 竖屏" },
+            ].map((item) => (
+              <div
+                key={item.label}
+                className="p-4 glass-card rounded-xl"
+              >
+                <div className="text-2xl mb-2">{item.icon}</div>
+                <div className="text-sm font-bold text-white">{item.label}</div>
+                <div className="text-xs text-white/40 mt-1">{item.desc}</div>
+              </div>
+            ))}
+          </div>
+        )}
+
+        {/* 底部说明 */}
+        <footer className="mt-8 text-center text-white/20 text-xs">
+          渲染完成后视频将自动可下载 · 支持抖音/小红书格式
+        </footer>
+      </div>
+    </div>
+  );
+}
