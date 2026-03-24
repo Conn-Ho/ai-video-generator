@@ -24,7 +24,7 @@ export interface Job {
   id: string;
   status: JobStatus;
   progress: number;          // 0-100
-  topic: string;
+  topic: string;             // 显示用（URL 模式下取页面标题）
   style: VideoStyle;
   script?: VideoScript;
   videoUrl?: string;
@@ -34,7 +34,8 @@ export interface Job {
 
 // 生成请求体
 export interface GenerateRequest {
-  topic: string;
+  topic?: string;  // 主题模式
+  url?: string;    // URL 模式（与 topic 二选一）
   style: VideoStyle;
   scenes: number;
 }

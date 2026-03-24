@@ -11,6 +11,8 @@
     "@google/genai": "^1.0.0",
     "@remotion/bundler": "4.0.409",
     "@remotion/renderer": "4.0.409",
+    "@types/cheerio": "^0.22.35",
+    "cheerio": "^1.2.0",
     "cors": "^2.8.5",
     "dotenv": "^16.4.0",
     "express": "^4.18.2",

@@ -2,7 +2,8 @@
 const BASE_URL = "/api";
 
 export interface GenerateRequest {
-  topic: string;
+  topic?: string;
+  url?: string;
   style: "tech" | "minimal" | "cute";
   scenes: number;
 }

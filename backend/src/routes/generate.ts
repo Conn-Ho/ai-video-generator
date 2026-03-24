@@ -1,7 +1,8 @@
 import { Router, Request, Response } from "express";
 import { v4 as uuidv4 } from "uuid";
 import { Job, GenerateRequest } from "../types";
-import { generateVideoScript } from "../services/ai";
+import { generateVideoScript, generateVideoScriptFromContent } from "../services/ai";
+import { scrapeUrl } from "../services/scraper";
 import { fetchImagesForScenes } from "../services/image";
 import { renderVideo } from "../services/render";
 
@@ -12,19 +13,20 @@ const jobs = new Map<string, Job>();
 
 // POST /api/generate - 创建生成任务
 router.post("/generate", async (req: Request, res: Response) => {
-  const { topic, style = "tech", scenes = 5 } = req.body as GenerateRequest;
+  const { topic, url, style = "tech", scenes = 5 } = req.body as GenerateRequest;
 
-  if (!topic?.trim()) {
-    res.status(400).json({ error: "主题不能为空" });
+  if (!topic?.trim() && !url?.trim()) {
+    res.status(400).json({ error: "请提供视频主题或 URL" });
     return;
   }
 
+  const displayTopic = topic?.trim() || url!.trim();
   const jobId = uuidv4();
   const job: Job = {
     id: jobId,
     status: "generating",
     progress: 0,
-    topic,
+    topic: displayTopic,
     style,
     createdAt: new Date(),
   };
@@ -33,7 +35,7 @@ router.post("/generate", async (req: Request, res: Response) => {
   res.json({ jobId });
 
   // 异步执行生成流程（不阻塞响应）
-  processJob(jobId, topic, style, scenes).catch((err) => {
+  processJob(jobId, topic?.trim(), url?.trim(), style, scenes).catch((err) => {
     const j = jobs.get(jobId);
     if (j) {
       j.status = "error";
@@ -82,7 +84,8 @@ router.get("/download/:jobId", (req: Request, res: Response) => {
 // 异步处理任务的核心流程
 async function processJob(
   jobId: string,
-  topic: string,
+  topic: string | undefined,
+  url: string | undefined,
   style: import("../types").VideoStyle,
   sceneCount: number
 ) {
@@ -90,8 +93,23 @@ async function processJob(
 
   // 第一步：生成脚本
   job.progress = 5;
-  console.log(`[${jobId}] 开始生成脚本: ${topic}`);
-  const script = await generateVideoScript(topic, style, sceneCount);
+  let script;
+
+  if (url) {
+    // URL 模式：先抓取正文，再基于内容生成脚本
+    console.log(`[${jobId}] 抓取 URL: ${url}`);
+    job.progress = 10;
+    const scraped = await scrapeUrl(url);
+    job.topic = scraped.title || url; // 用页面标题替换显示名
+    console.log(`[${jobId}] 抓取完成，正文 ${scraped.text.length} 字`);
+    job.progress = 20;
+    script = await generateVideoScriptFromContent(scraped.text, scraped.title, style, sceneCount);
+  } else {
+    // 主题模式：直接生成脚本
+    console.log(`[${jobId}] 开始生成脚本: ${topic}`);
+    script = await generateVideoScript(topic!, style, sceneCount);
+  }
+
   job.script = script;
   job.progress = 30;
   console.log(`[${jobId}] 脚本生成完成，共 ${script.scenes.length} 个场景`);

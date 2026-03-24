@@ -10,10 +10,13 @@ import {
 
 type VideoStyle = "tech" | "minimal" | "cute";
 type AppState = "idle" | "loading";
+type InputMode = "topic" | "url";
 
 // 主应用组件
 export default function App() {
+  const [inputMode, setInputMode] = useState<InputMode>("topic");
   const [topic, setTopic] = useState("");
+  const [urlInput, setUrlInput] = useState("");
   const [style, setStyle] = useState<VideoStyle>("tech");
   const [sceneCount, setSceneCount] = useState(5);
   const [appState, setAppState] = useState<AppState>("idle");
@@ -36,7 +39,6 @@ export default function App() {
         const status = await getJobStatus(id);
         setJobStatus(status);
 
-        // 完成或出错时停止轮询
         if (status.status === "done" || status.status === "error") {
           stopPolling();
           setAppState("idle");
@@ -46,14 +48,15 @@ export default function App() {
       }
     };
 
-    poll(); // 立即执行一次
-    pollTimerRef.current = setInterval(poll, 2000); // 每2秒轮询
+    poll();
+    pollTimerRef.current = setInterval(poll, 2000);
   }, [stopPolling]);
 
   // 点击生成按钮
   const handleGenerate = async () => {
-    if (!topic.trim()) {
-      alert("请输入视频主题");
+    const currentValue = inputMode === "topic" ? topic.trim() : urlInput.trim();
+    if (!currentValue) {
+      alert(inputMode === "topic" ? "请输入视频主题" : "请输入 URL");
       return;
     }
 
@@ -63,12 +66,11 @@ export default function App() {
     setAppState("loading");
 
     try {
-      const { jobId: newJobId } = await createGenerateJob({
-        topic: topic.trim(),
-        style,
-        scenes: sceneCount,
-      });
+      const payload = inputMode === "topic"
+        ? { topic: currentValue, style, scenes: sceneCount }
+        : { url: currentValue, style, scenes: sceneCount };
 
+      const { jobId: newJobId } = await createGenerateJob(payload);
       setJobId(newJobId);
       startPolling(newJobId);
     } catch (err) {
@@ -80,16 +82,18 @@ export default function App() {
   // 下载视频
   const handleDownload = () => {
     if (jobId) {
-      const url = getDownloadUrl(jobId);
+      const downloadUrl = getDownloadUrl(jobId);
       const a = document.createElement("a");
-      a.href = url;
-      a.download = `${topic}-${style}.mp4`;
+      a.href = downloadUrl;
+      a.download = `${inputMode === "topic" ? topic : urlInput}-${style}.mp4`;
       a.click();
     }
   };
 
   const isGenerating = appState === "loading" && jobStatus &&
     (jobStatus.status === "generating" || jobStatus.status === "rendering");
+
+  const canSubmit = inputMode === "topic" ? topic.trim().length > 0 : urlInput.trim().length > 0;
 
   return (
     <div className="min-h-screen tech-bg relative">
@@ -114,29 +118,72 @@ export default function App() {
             AI 视频生成器
           </h1>
           <p className="text-white/50 text-lg">
-            输入主题，一键生成抖音/小红书竖屏短视频
+            输入主题或粘贴链接，一键生成抖音/小红书竖屏短视频
           </p>
         </header>
 
         {/* 主表单卡片 */}
         <div className="glass-card rounded-2xl p-6 space-y-6">
-          {/* 主题输入 */}
-          <div className="space-y-2">
-            <label className="block text-sm font-semibold text-white/70">
-              视频主题
-            </label>
-            <input
-              type="text"
-              value={topic}
-              onChange={(e) => setTopic(e.target.value)}
-              onKeyDown={(e) => e.key === "Enter" && handleGenerate()}
-              placeholder="例如：5个提升效率的AI工具、减肥的3个秘诀..."
-              className="w-full px-4 py-3 bg-white/5 border border-white/10 rounded-xl text-white
-                         placeholder:text-white/30 focus:outline-none focus:border-cyan-500/50
-                         focus:bg-white/8 transition-all duration-200 text-sm"
-              disabled={!!isGenerating}
-            />
+
+          {/* 输入模式切换 */}
+          <div className="flex rounded-xl bg-white/5 p-1 gap-1">
+            {(["topic", "url"] as InputMode[]).map((mode) => (
+              <button
+                key={mode}
+                onClick={() => setInputMode(mode)}
+                disabled={!!isGenerating}
+                className={`
+                  flex-1 py-2 rounded-lg text-sm font-semibold transition-all duration-200
+                  ${inputMode === mode
+                    ? "bg-cyan-500/20 text-cyan-400 border border-cyan-500/40"
+                    : "text-white/40 hover:text-white/60"
+                  }
+                `}
+              >
+                {mode === "topic" ? "📝 输入主题" : "🔗 粘贴链接"}
+              </button>
+            ))}
           </div>
+
+          {/* 动态输入区 */}
+          {inputMode === "topic" ? (
+            <div className="space-y-2">
+              <label className="block text-sm font-semibold text-white/70">
+                视频主题
+              </label>
+              <input
+                type="text"
+                value={topic}
+                onChange={(e) => setTopic(e.target.value)}
+                onKeyDown={(e) => e.key === "Enter" && handleGenerate()}
+                placeholder="例如：5个提升效率的AI工具、减肥的3个秘诀..."
+                className="w-full px-4 py-3 bg-white/5 border border-white/10 rounded-xl text-white
+                           placeholder:text-white/30 focus:outline-none focus:border-cyan-500/50
+                           focus:bg-white/8 transition-all duration-200 text-sm"
+                disabled={!!isGenerating}
+              />
+            </div>
+          ) : (
+            <div className="space-y-2">
+              <label className="block text-sm font-semibold text-white/70">
+                文章 / 博客 / 新闻链接
+              </label>
+              <input
+                type="url"
+                value={urlInput}
+                onChange={(e) => setUrlInput(e.target.value)}
+                onKeyDown={(e) => e.key === "Enter" && handleGenerate()}
+                placeholder="https://..."
+                className="w-full px-4 py-3 bg-white/5 border border-white/10 rounded-xl text-white
+                           placeholder:text-white/30 focus:outline-none focus:border-cyan-500/50
+                           focus:bg-white/8 transition-all duration-200 text-sm"
+                disabled={!!isGenerating}
+              />
+              <p className="text-xs text-white/30">
+                AI 自动抓取正文 → 提炼核心观点 → 生成视频脚本
+              </p>
+            </div>
+          )}
 
           {/* 视频风格选择 */}
           <div className="space-y-2">
@@ -170,11 +217,11 @@ export default function App() {
           {/* 生成按钮 */}
           <button
             onClick={handleGenerate}
-            disabled={!!isGenerating || !topic.trim()}
+            disabled={!!isGenerating || !canSubmit}
             className={`
               w-full py-4 rounded-xl font-bold text-lg transition-all duration-200
               flex items-center justify-center gap-3
-              ${isGenerating || !topic.trim()
+              ${isGenerating || !canSubmit
                 ? "bg-white/10 text-white/30 cursor-not-allowed"
                 : "bg-gradient-to-r from-cyan-500 to-blue-600 text-white hover:from-cyan-400 hover:to-blue-500 active:scale-[0.98] shadow-lg shadow-cyan-500/20"
               }
@@ -186,7 +233,7 @@ export default function App() {
                   <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
                   <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z" />
                 </svg>
-                生成中...
+                {inputMode === "url" && jobStatus?.status === "generating" ? "抓取并分析中..." : "生成中..."}
               </>
             ) : (
               <>
@@ -207,15 +254,19 @@ export default function App() {
         {/* 使用说明 */}
         {!jobStatus && (
           <div className="mt-8 grid grid-cols-3 gap-4 text-center">
-            {[
-              { icon: "📝", label: "AI 生成脚本", desc: "Gemini 自动创作" },
-              { icon: "🖼", label: "智能配图", desc: "Unsplash 精选图片" },
-              { icon: "🎬", label: "自动渲染", desc: "1080×1920 竖屏" },
-            ].map((item) => (
-              <div
-                key={item.label}
-                className="p-4 glass-card rounded-xl"
-              >
+            {(inputMode === "topic"
+              ? [
+                  { icon: "📝", label: "AI 生成脚本", desc: "Gemini 自动创作" },
+                  { icon: "🖼", label: "智能配图", desc: "Unsplash 精选图片" },
+                  { icon: "🎬", label: "自动渲染", desc: "1080×1920 竖屏" },
+                ]
+              : [
+                  { icon: "🔗", label: "抓取正文", desc: "自动提取文章内容" },
+                  { icon: "✂️", label: "提炼观点", desc: "Gemini 精选核心" },
+                  { icon: "🎬", label: "生成视频", desc: "一键转成短视频" },
+                ]
+            ).map((item) => (
+              <div key={item.label} className="p-4 glass-card rounded-xl">
                 <div className="text-2xl mb-2">{item.icon}</div>
                 <div className="text-sm font-bold text-white">{item.label}</div>
                 <div className="text-xs text-white/40 mt-1">{item.desc}</div>
