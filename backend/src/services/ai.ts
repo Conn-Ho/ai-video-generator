@@ -69,7 +69,7 @@ ${content}
 }`;
 
   const response = await genai.models.generateContent({
-    model: "gemini-2.0-flash-001",
+    model: "gemini-2.5-flash",
     contents: prompt,
   });
 
@@ -113,7 +113,7 @@ export async function generateVideoScript(
 }`;
 
   const response = await genai.models.generateContent({
-    model: "gemini-2.0-flash-001",
+    model: "gemini-2.5-flash",
     contents: prompt,
   });
 
