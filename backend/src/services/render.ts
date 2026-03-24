@@ -4,19 +4,19 @@ import { bundle } from "@remotion/bundler";
 import { renderMedia, selectComposition } from "@remotion/renderer";
 import { VideoScript, VideoStyle } from "../types";
 
+// 项目根目录（无论从哪里启动都正确）
+const PROJECT_ROOT = path.resolve(__dirname, "../../../");
+
 // 输出目录
-const OUTPUT_DIR = path.join(process.cwd(), "output");
+const OUTPUT_DIR = path.join(PROJECT_ROOT, "output");
 
 // 确保输出目录存在
 if (!fs.existsSync(OUTPUT_DIR)) {
   fs.mkdirSync(OUTPUT_DIR, { recursive: true });
 }
 
-// Remotion 入口文件路径（相对于 backend 工作目录）
-const REMOTION_ENTRY = path.join(
-  process.cwd(),
-  "../video/src/index.ts"
-);
+// Remotion 入口文件路径
+const REMOTION_ENTRY = path.join(PROJECT_ROOT, "video/src/index.ts");
 
 // 渲染视频
 export async function renderVideo(
